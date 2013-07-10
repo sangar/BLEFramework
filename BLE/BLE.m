@@ -14,120 +14,139 @@
 #import "BLE.h"
 #import "BLEDefines.h"
 
+
+@interface BLE () <CBCentralManagerDelegate, CBPeripheralDelegate>
+
+- (void)readValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral;
+- (void)notification:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral on:(BOOL)on;
+
+- (void)readVendorNameFromPeripheral;
+- (void)readLibVerFromPeripheral;
+
+#if !TARGET_OS_IPHONE
+- (BOOL)isLECapableHardware;
+#endif
+
+@end
+
+
 @implementation BLE
 
-@synthesize delegate;
-@synthesize CM;
-@synthesize peripherals;
-@synthesize activePeripheral;
+
+@synthesize delegate = _delegate;
+@synthesize centralManager = _centralManager;
+@synthesize peripherals = _peripherals;
+@synthesize activePeripheral = _activePeripheral;
+
 
 static UInt16 libver = 0;
 static unsigned char vendor_name[20] = {0};
 static bool isConnected = false;
 static int rssi = 0;
 
--(void) enableWrite
-{
+
+- (id)initWithDelegate:(id)delegate {
+    self = [self init];
+    self.delegate = delegate;
+    return self;
+}
+
+- (id)init {
+    self = [super init];
+    if (self) {
+        [self controlSetup:0];
+        [self findBLEPeripherals:10]; // 10 seconds timeout
+    }
+    return self;
+}
+
+
+- (void)enableWrite {
     CBUUID *uuid_service = [CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID];
     CBUUID *uuid_char = [CBUUID UUIDWithString:@BLE_DEVICE_RESET_RX_UUID];
     unsigned char bytes[] = {0x01};
-    NSData *d = [[NSData alloc] initWithBytes:bytes length:1];
-    [self writeValue:uuid_service characteristicUUID:uuid_char p:activePeripheral data:d];
+    NSData *data = [[NSData alloc] initWithBytes:bytes length:1];
+    [self writeValue:uuid_service characteristicUUID:uuid_char peripheral:_activePeripheral data:data];
 }
 
--(void) readLibVerFromPeripheral
-{
+- (void)readLibVerFromPeripheral {
     CBUUID *uuid_service = [CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID];
     CBUUID *uuid_char = [CBUUID UUIDWithString:@BLE_DEVICE_LIB_VERSION_UUID];
     
-    [self readValue:uuid_service characteristicUUID:uuid_char p:activePeripheral];
+    [self readValue:uuid_service characteristicUUID:uuid_char peripheral:_activePeripheral];
 }
 
--(void) readVendorNameFromPeripheral
-{
+- (void)readVendorNameFromPeripheral {
     CBUUID *uuid_service = [CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID];
     CBUUID *uuid_char = [CBUUID UUIDWithString:@BLE_DEVICE_VENDOR_NAME_UUID];
     
-    [self readValue:uuid_service characteristicUUID:uuid_char p:activePeripheral];
+    [self readValue:uuid_service characteristicUUID:uuid_char peripheral:_activePeripheral];
 }
 
--(BOOL) isConnected
-{
+- (BOOL)isConnected {
     return isConnected;
 }
 
--(void) read
-{
+- (void)read {
     CBUUID *uuid_service = [CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID];
     CBUUID *uuid_char = [CBUUID UUIDWithString:@BLE_DEVICE_RX_UUID];
     
-    [self readValue:uuid_service characteristicUUID:uuid_char p:activePeripheral];
+    [self readValue:uuid_service characteristicUUID:uuid_char peripheral:_activePeripheral];
 }
 
--(void) write:(NSData *)d
-{
+- (void)write:(NSData *)data {
     CBUUID *uuid_service = [CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID];
     CBUUID *uuid_char = [CBUUID UUIDWithString:@BLE_DEVICE_TX_UUID];
     
-    [self writeValue:uuid_service characteristicUUID:uuid_char p:activePeripheral data:d];
+    [self writeValue:uuid_service characteristicUUID:uuid_char peripheral:_activePeripheral data:data];
 }
 
--(void) enableReadNotification:(CBPeripheral *)p
-{
+- (void)enableReadNotification:(CBPeripheral *)peripheral {
     CBUUID *uuid_service = [CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID];
     CBUUID *uuid_char = [CBUUID UUIDWithString:@BLE_DEVICE_RX_UUID];
     
-    [self notification:uuid_service characteristicUUID:uuid_char p:p on:YES];
+    [self notification:uuid_service characteristicUUID:uuid_char peripheral:peripheral on:YES];
 }
 
--(void) notification:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID p:(CBPeripheral *)p on:(BOOL)on
-{
-    CBService *service = [self findServiceFromUUID:serviceUUID p:p];
+- (void)notification:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral on:(BOOL)on {
+    CBService *service = [self findServiceFromUUID:serviceUUID peripheral:peripheral];
     
-    if (!service)
-    {
-        printf("Could not find service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:serviceUUID],[self UUIDToString:p.UUID]);
+    if (!service) {
+        printf("Could not find service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:serviceUUID],[self UUIDToString:peripheral.UUID]);
         return;
     }
     
     CBCharacteristic *characteristic = [self findCharacteristicFromUUID:characteristicUUID service:service];
     
-    if (!characteristic)
-    {
-        printf("Could not find characteristic with UUID %s on service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristicUUID],[self CBUUIDToString:serviceUUID],[self UUIDToString:p.UUID]);
+    if (!characteristic) {
+        printf("Could not find characteristic with UUID %s on service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristicUUID],[self CBUUIDToString:serviceUUID],[self UUIDToString:peripheral.UUID]);
         return;
     }
     
-    [p setNotifyValue:on forCharacteristic:characteristic];
+    [peripheral setNotifyValue:on forCharacteristic:characteristic];
 }
 
--(int) readRSSI
-{
+- (int)readRSSI {
     return rssi;
 }
 
--(UInt16) readLibVer
-{
+- (UInt16)readLibVer {
     return libver;
 }
 
--(UInt16) readFrameworkVersion
-{
+- (UInt16)readFrameworkVersion {
     return BLE_FRAMEWORK_VERSION;
 }
 
--(NSString *) readVendorName
-{
+- (NSString *)readVendorName {
     return [NSString stringWithFormat:@"%s", vendor_name];
 }
 
--(void) readValue: (CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID p:(CBPeripheral *)p
-{
-    CBService *service = [self findServiceFromUUID:serviceUUID p:p];
+- (void)readValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral {
+    CBService *service = [self findServiceFromUUID:serviceUUID peripheral:peripheral];
     
-    if (!service)
-    {
-        printf("Could not find service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:serviceUUID],[self UUIDToString:p.UUID]);
+    if (!service) {
+        printf("Could not find service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:serviceUUID],[self UUIDToString:peripheral.UUID]);
         return;
     }
     
@@ -135,20 +154,19 @@ static int rssi = 0;
     
     if (!characteristic)
     {
-        printf("Could not find characteristic with UUID %s on service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristicUUID],[self CBUUIDToString:serviceUUID],[self UUIDToString:p.UUID]);
+        printf("Could not find characteristic with UUID %s on service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristicUUID],[self CBUUIDToString:serviceUUID],[self UUIDToString:peripheral.UUID]);
         return;
     }
     
-    [p readValueForCharacteristic:characteristic];
+    [peripheral readValueForCharacteristic:characteristic];
 }
 
--(void) writeValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID p:(CBPeripheral *)p data:(NSData *)data
-{
-    CBService *service = [self findServiceFromUUID:serviceUUID p:p];
+- (void)writeValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral data:(NSData *)data {
+    CBService *service = [self findServiceFromUUID:serviceUUID peripheral:peripheral];
     
     if (!service)
     {
-        printf("Could not find service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:serviceUUID],[self UUIDToString:p.UUID]);
+        printf("Could not find service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:serviceUUID],[self UUIDToString:peripheral.UUID]);
         return;
     }
     
@@ -156,40 +174,39 @@ static int rssi = 0;
     
     if (!characteristic)
     {
-        printf("Could not find characteristic with UUID %s on service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristicUUID],[self CBUUIDToString:serviceUUID],[self UUIDToString:p.UUID]);
+        printf("Could not find characteristic with UUID %s on service with UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristicUUID],[self CBUUIDToString:serviceUUID],[self UUIDToString:peripheral.UUID]);
         return;
     }
     
-    [p writeValue:data forCharacteristic:characteristic type:CBCharacteristicWriteWithoutResponse];
+    [peripheral writeValue:data forCharacteristic:characteristic type:CBCharacteristicWriteWithoutResponse];
 }
 
--(UInt16) swap:(UInt16)s
-{
+- (UInt16)swap:(UInt16)s {
     UInt16 temp = s << 8;
     temp |= (s >> 8);
     return temp;
 }
 
-- (int) controlSetup: (int) s
-{
-    self.CM = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
+// Step 1
+- (int)controlSetup:(int)s {
+    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
     return 0;
 }
 
-- (int) findBLEPeripherals:(int) timeout
-{
-    if (self.CM.state != CBCentralManagerStatePoweredOn) {
+// Step 2
+- (int)findBLEPeripherals:(int)timeout {
+    if (self.centralManager.state != CBCentralManagerStatePoweredOn) {
         printf("CoreBluetooth not correctly initialized !\r\n");
-        printf("State = %d (%s)\r\n", self.CM.state,[self centralManagerStateToString:self.CM.state]);
+        printf("State = %d (%s)\r\n", self.centralManager.state,[self centralManagerStateToString:self.centralManager.state]);
         return -1;
     }
     
     [NSTimer scheduledTimerWithTimeInterval:(float)timeout target:self selector:@selector(scanTimer:) userInfo:nil repeats:NO];
     
 #if TARGET_OS_IPHONE
-    [self.CM scanForPeripheralsWithServices:[NSArray arrayWithObject:[CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID]] options:nil];
+    [self.centralManager scanForPeripheralsWithServices:[NSArray arrayWithObject:[CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID]] options:nil];
 #else
-    [self.CM scanForPeripheralsWithServices:nil options:nil]; // Start scanning
+    [self.centralManager scanForPeripheralsWithServices:nil options:nil]; // Start scanning
 #endif
     
     NSLog(@"scanForPeripheralsWithServices");
@@ -197,26 +214,16 @@ static int rssi = 0;
     return 0; // Started scanning OK !
 }
 
-- (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error;
-{
-    done = false;
-
-    [[self delegate] bleDidDisconnect];
-    
-    isConnected = false;
-}
-
-- (void) connectPeripheral:(CBPeripheral *)peripheral {
+// Step 4
+- (void)connectPeripheral:(CBPeripheral *)peripheral {
     printf("Connecting to peripheral with UUID : %s\r\n",[self UUIDToString:peripheral.UUID]);
     self.activePeripheral = peripheral;
     self.activePeripheral.delegate = self;
-    [self.CM connectPeripheral:self.activePeripheral options:[NSDictionary dictionaryWithObject:[NSNumber numberWithBool:YES] forKey:CBConnectPeripheralOptionNotifyOnDisconnectionKey]];
+    [self.centralManager connectPeripheral:self.activePeripheral options:[NSDictionary dictionaryWithObject:[NSNumber numberWithBool:YES] forKey:CBConnectPeripheralOptionNotifyOnDisconnectionKey]];
 }
 
-- (const char *) centralManagerStateToString: (int)state
-{
-    switch(state)
-    {
+- (const char *)centralManagerStateToString:(int)state {
+    switch(state) {
         case CBCentralManagerStateUnknown:
             return "State unknown (CBCentralManagerStateUnknown)";
         case CBCentralManagerStateResetting:
@@ -236,38 +243,35 @@ static int rssi = 0;
     return "Unknown state";
 }
 
-- (void) scanTimer:(NSTimer *)timer
-{
-    [self.CM stopScan];
+- (void)scanTimer:(NSTimer *)timer {
+    [self.centralManager stopScan];
     printf("Stopped Scanning\r\n");
-    printf("Known peripherals : %d\r\n",[self.peripherals count]);
+    printf("Known peripherals : %d\r\n", [self.peripherals count]);
     [self printKnownPeripherals];
 }
 
-- (void) printKnownPeripherals
-{
+- (void)printKnownPeripherals {
     int i;
     
     printf("List of currently known peripherals : \r\n");
     
     for (i = 0; i < self.peripherals.count; i++)
     {
-        CBPeripheral *p = [self.peripherals objectAtIndex:i];
+        CBPeripheral *peripheral = [self.peripherals objectAtIndex:i];
         
-        if (p.UUID != NULL)
+        if (peripheral.UUID != NULL)
         {
-            CFStringRef s = CFUUIDCreateString(NULL, p.UUID);
+            CFStringRef s = CFUUIDCreateString(NULL, peripheral.UUID);
             printf("%d  |  %s\r\n",i,CFStringGetCStringPtr(s, 0));
         }
         else
             printf("%d  |  NULL\r\n",i);
         
-        [self printPeripheralInfo:p];
+        [self printPeripheralInfo:peripheral];
     }
 }
 
-- (void) printPeripheralInfo:(CBPeripheral*)peripheral
-{
+- (void)printPeripheralInfo:(CBPeripheral*)peripheral {
     printf("------------------------------------\n");
     printf("Peripheral Info :\n");
     
@@ -283,10 +287,9 @@ static int rssi = 0;
     printf("-------------------------------------\n");
 }
 
-- (int) UUIDSAreEqual:(CFUUIDRef)u1 u2:(CFUUIDRef)u2
-{
-    CFUUIDBytes b1 = CFUUIDGetUUIDBytes(u1);
-    CFUUIDBytes b2 = CFUUIDGetUUIDBytes(u2);
+- (int)UUIDSAreEqual:(CFUUIDRef)UUID1 UUID2:(CFUUIDRef)UUDID2 {
+    CFUUIDBytes b1 = CFUUIDGetUUIDBytes(UUID1);
+    CFUUIDBytes b2 = CFUUIDGetUUIDBytes(UUDID2);
     
     if (memcmp(&b1, &b2, 16) == 0) {
         return 1;
@@ -295,28 +298,21 @@ static int rssi = 0;
         return 0;
 }
 
--(void) getAllServicesFromPeripheral:(CBPeripheral *)p
-{
-    [p discoverServices:nil]; // Discover all services without filter
+- (void)getAllServicesFromPeripheral:(CBPeripheral *)peripheral {
+    [peripheral discoverServices:nil]; // Discover all services without filter
 }
 
--(void) getAllCharacteristicsFromPeripheral:(CBPeripheral *)p
-{
-    for (int i=0; i < p.services.count; i++)
-    {
-        CBService *s = [p.services objectAtIndex:i];
-        //        printf("Fetching characteristics for service with UUID : %s\r\n",[self CBUUIDToString:s.UUID]);
-        [p discoverCharacteristics:nil forService:s];
+- (void)getAllCharacteristicsFromPeripheral:(CBPeripheral *)peripheral {
+    for (CBService *service in peripheral.services) {
+        [peripheral discoverCharacteristics:nil forService:service];
     }
 }
 
--(const char *) CBUUIDToString:(CBUUID *) UUID
-{
+- (const char *)CBUUIDToString:(CBUUID *) UUID {
     return [[UUID.data description] cStringUsingEncoding:NSStringEncodingConversionAllowLossy];
 }
 
--(const char *) UUIDToString:(CFUUIDRef)UUID
-{
+- (const char *)UUIDToString:(CFUUIDRef)UUID {
     if (!UUID)
         return "NULL";
     
@@ -325,8 +321,7 @@ static int rssi = 0;
     return CFStringGetCStringPtr(s, 0);
 }
 
--(int) compareCBUUID:(CBUUID *) UUID1 UUID2:(CBUUID *)UUID2
-{
+- (int)compareCBUUID:(CBUUID *) UUID1 UUID2:(CBUUID *)UUID2 {
     char b1[16];
     char b2[16];
     [UUID1.data getBytes:b1];
@@ -335,8 +330,7 @@ static int rssi = 0;
     else return 0;
 }
 
--(int) compareCBUUIDToInt:(CBUUID *)UUID1 UUID2:(UInt16)UUID2
-{
+- (int)compareCBUUIDToInt:(CBUUID *)UUID1 UUID2:(UInt16)UUID2 {
     char b1[16];
     
     [UUID1.data getBytes:b1];
@@ -348,34 +342,30 @@ static int rssi = 0;
         return 0;
 }
 
--(UInt16) CBUUIDToInt:(CBUUID *) UUID
-{
+- (UInt16)CBUUIDToInt:(CBUUID *)UUID {
     char b1[16];
     [UUID.data getBytes:b1];
     return ((b1[0] << 8) | b1[1]);
 }
 
--(CBUUID *) IntToCBUUID:(UInt16)UUID
-{
-    char t[16];
-    t[0] = ((UUID >> 8) & 0xff); t[1] = (UUID & 0xff);
-    NSData *data = [[NSData alloc] initWithBytes:t length:16];
-    return [CBUUID UUIDWithData:data];
-}
+//- (CBUUID *)IntToCBUUID:(UInt16)UUID {
+//    char t[16];
+//    t[0] = ((UUID >> 8) & 0xff); t[1] = (UUID & 0xff);
+//    NSData *data = [[NSData alloc] initWithBytes:t length:16];
+//    return [CBUUID UUIDWithData:data];
+//}
 
--(CBService *) findServiceFromUUID:(CBUUID *)UUID p:(CBPeripheral *)p
-{
-    for(int i = 0; i < p.services.count; i++)
+- (CBService *)findServiceFromUUID:(CBUUID *)UUID peripheral:(CBPeripheral *)peripheral {
+    for(int i = 0; i < peripheral.services.count; i++)
     {
-        CBService *s = [p.services objectAtIndex:i];
-        if ([self compareCBUUID:s.UUID UUID2:UUID]) return s;
+        CBService *service = [peripheral.services objectAtIndex:i];
+        if ([self compareCBUUID:service.UUID UUID2:UUID]) return service;
     }
     
     return nil; //Service not found on this peripheral
 }
 
--(CBCharacteristic *) findCharacteristicFromUUID:(CBUUID *)UUID service:(CBService*)service
-{
+- (CBCharacteristic *)findCharacteristicFromUUID:(CBUUID *)UUID service:(CBService*)service {
     for(int i=0; i < service.characteristics.count; i++)
     {
         CBCharacteristic *c = [service.characteristics objectAtIndex:i];
@@ -388,12 +378,10 @@ static int rssi = 0;
 #if TARGET_OS_IPHONE
     //-- no need for iOS
 #else
-- (BOOL) isLECapableHardware
-{
+- (BOOL)isLECapableHardware {
     NSString * state = nil;
     
-    switch ([CM state])
-    {
+    switch ([centralManager state]) {
         case CBCentralManagerStateUnsupported:
             state = @"The platform/hardware doesn't support Bluetooth Low Energy.";
             break;
@@ -422,17 +410,13 @@ static int rssi = 0;
 }
 #endif
 
-- (void)centralManagerDidUpdateState:(CBCentralManager *)central
-{
-#if TARGET_OS_IPHONE
-    printf("Status of CoreBluetooth central manager changed %d (%s)\r\n",central.state,[self centralManagerStateToString:central.state]);
-#else
-    [self isLECapableHardware];
-#endif
-}
 
-- (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary *)advertisementData RSSI:(NSNumber *)RSSI
-{
+#pragma mark -
+#pragma mark - CBCentralManagerDelegate methods
+
+
+// Step 3
+- (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary *)advertisementData RSSI:(NSNumber *)RSSI {
     if (!self.peripherals)
         self.peripherals = [[NSMutableArray alloc] initWithObjects:peripheral,nil];
     else
@@ -444,8 +428,7 @@ static int rssi = 0;
             if ((p.UUID == NULL) || (peripheral.UUID == NULL))
                 continue;
             
-            if ([self UUIDSAreEqual:p.UUID u2:peripheral.UUID])
-            {
+            if ([self UUIDSAreEqual:p.UUID UUID2:peripheral.UUID]) {
                 [self.peripherals replaceObjectAtIndex:i withObject:peripheral];
                 printf("Duplicate UUID found updating ...\n");
                 return;
@@ -460,59 +443,43 @@ static int rssi = 0;
     printf("didDiscoverPeripheral\r\n");
 }
 
-- (void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral
-{
+- (void)centralManagerDidUpdateState:(CBCentralManager *)central {
+#if TARGET_OS_IPHONE
+    printf("Status of CoreBluetooth central manager changed %d (%s)\r\n",central.state,[self centralManagerStateToString:central.state]);
+#else
+    [self isLECapableHardware];
+#endif
+}
+
+// Step 5
+- (void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral {
     if (peripheral.UUID != NULL)
         printf("Connected to %s successful\n",[self UUIDToString:peripheral.UUID]);
     else
         printf("Connected to NULL successful\n");    
     self.activePeripheral = peripheral;
+
     [self.activePeripheral discoverServices:nil];
     [self getAllServicesFromPeripheral:peripheral];
 }
 
+
 static bool done = false;
 
-- (void)peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForService:(CBService *)service error:(NSError *)error
-{
-    if (!error)
-    {
-        //        printf("Characteristics of service with UUID : %s found\n",[self CBUUIDToString:service.UUID]);
-        
-        for (int i=0; i < service.characteristics.count; i++)
-        {
-            //            CBCharacteristic *c = [service.characteristics objectAtIndex:i];
-            //            printf("Found characteristic %s\n",[ self CBUUIDToString:c.UUID]);
-            CBService *s = [peripheral.services objectAtIndex:(peripheral.services.count - 1)];
-            
-            if ([service.UUID isEqual:s.UUID])
-            {
-                if (!done)
-                {
-                    [self enableReadNotification:activePeripheral];
-                    [self readLibVerFromPeripheral];
-                    [self readVendorNameFromPeripheral];
-                    
-                    [[self delegate] bleDidConnect];
-                    
-                    isConnected = true;
-                    [activePeripheral readRSSI];
-
-                    done = true;
-                }
-                
-                break;
-            }
-        }
-    }
-    else
-    {
-        printf("Characteristic discorvery unsuccessful!\r\n");
-    }
+- (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error {
+    done = false;
+    
+    [[self delegate] BLEDidDisconnect];
+    
+    isConnected = false;
 }
 
-- (void)peripheral:(CBPeripheral *)peripheral didDiscoverServices:(NSError *)error
-{
+
+#pragma mark -
+#pragma mark - CBPeripheralDelegate methods
+
+// Step 6
+- (void)peripheral:(CBPeripheral *)peripheral didDiscoverServices:(NSError *)error {
     if (!error)
     {
         //        printf("Services of peripheral with UUID : %s found\n",[self UUIDToString:peripheral.UUID]);
@@ -524,21 +491,63 @@ static bool done = false;
     }
 }
 
-- (void)peripheral:(CBPeripheral *)peripheral didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
-{
-    if (!error)
-    {
-        //        printf("Updated notification state for characteristic with UUID %s on service with  UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristic.UUID],[self CBUUIDToString:characteristic.service.UUID],[self UUIDToString:peripheral.UUID]);
+// Step 7
+- (void)peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForService:(CBService *)service error:(NSError *)error {
+//    if (!error) {
+////        printf("Characteristics of service with UUID : %s found\n",[self CBUUIDToString:service.UUID]);
+//        
+//        for (int i=0; i < service.characteristics.count; i++) {
+////            CBCharacteristic *c = [service.characteristics objectAtIndex:i];
+////            printf("Found characteristic %s\n",[ self CBUUIDToString:c.UUID]);
+//            CBService *s = [peripheral.services objectAtIndex:(peripheral.services.count - 1)];
+//            
+//            if ([service.UUID isEqual:s.UUID]) {
+//                if (!done) {
+//                    [self enableReadNotification:_activePeripheral];
+//                    [self readLibVerFromPeripheral];
+//                    [self readVendorNameFromPeripheral];
+//                    
+//                    [[self delegate] bleDidConnect];
+//                    
+//                    isConnected = true;
+//                    [_activePeripheral readRSSI];
+//
+//                    done = true;
+//                }
+//                
+//                break;
+//            }
+//        }
+//    }
+//    else
+//    {
+//        printf("Characteristic discorvery unsuccessful!\r\n");
+//    }
+    
+    if ([service.UUID isEqual:[CBUUID UUIDWithString:@BLE_DEVICE_SERVICE_UUID]]) {
+        
+        for (CBCharacteristic *characteristic in service.characteristics) {
+            
+            if (!done) {
+                [self enableReadNotification:_activePeripheral];
+                [self readLibVerFromPeripheral];
+                [self readVendorNameFromPeripheral];
+                
+                [[self delegate] BLEDidConnect];
+                
+                isConnected = true;
+                [_activePeripheral readRSSI];
+                
+                done = true;
+            }
+            
+        }
     }
-    else
-    {
-        printf("Error in setting notification state for characteristic with UUID %s on service with  UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristic.UUID],[self CBUUIDToString:characteristic.service.UUID],[self UUIDToString:peripheral.UUID]);
-        printf("Error code was %s\r\n",[[error description] cStringUsingEncoding:NSStringEncodingConversionAllowLossy]);
-    }
+    
 }
 
-- (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
-{
+// Step 8
+- (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
     unsigned char data[BLE_DEVICE_RX_READ_LEN];
     
     static unsigned char buf[512];
@@ -559,7 +568,7 @@ static bool done = false;
                 
                 if (len >= 64)
                 {
-                    [[self delegate] bleDidReceiveData:buf length:len];
+                    [[self delegate] BLEDidReceiveData:buf length:len];
                     len = 0;
                 }
             }
@@ -568,7 +577,7 @@ static bool done = false;
                 memcpy(&buf[len], data, data_len);
                 len += data_len;
                 
-                [[self delegate] bleDidReceiveData:buf length:len];
+                [[self delegate] BLEDidReceiveData:buf length:len];
                 len = 0;
             }
             
@@ -578,12 +587,12 @@ static bool done = false;
         {
             data_len = characteristic.value.length;
             [characteristic.value getBytes:vendor_name length:data_len];
-//            NSLog(@"Vendor: %s", vendor_name);
+            //            NSLog(@"Vendor: %s", vendor_name);
         }
         else if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:@BLE_DEVICE_LIB_VERSION_UUID]])
         {
             [characteristic.value getBytes:&libver length:2];
-//            NSLog(@"Lib. ver.: %X", libver);
+            //            NSLog(@"Lib. ver.: %X", libver);
         }
     }
     else
@@ -592,17 +601,29 @@ static bool done = false;
     }
 }
 
-- (void)peripheralDidUpdateRSSI:(CBPeripheral *)peripheral error:(NSError *)error
-{
+- (void)peripheral:(CBPeripheral *)peripheral didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
+    if (!error)
+    {
+        //        printf("Updated notification state for characteristic with UUID %s on service with  UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristic.UUID],[self CBUUIDToString:characteristic.service.UUID],[self UUIDToString:peripheral.UUID]);
+    }
+    else
+    {
+        printf("Error in setting notification state for characteristic with UUID %s on service with  UUID %s on peripheral with UUID %s\r\n",[self CBUUIDToString:characteristic.UUID],[self CBUUIDToString:characteristic.service.UUID],[self UUIDToString:peripheral.UUID]);
+        printf("Error code was %s\r\n",[[error description] cStringUsingEncoding:NSStringEncodingConversionAllowLossy]);
+    }
+}
+
+
+- (void)peripheralDidUpdateRSSI:(CBPeripheral *)peripheral error:(NSError *)error {
     if (!isConnected)
         return;
     
     if (rssi != peripheral.RSSI.intValue)
     {
         rssi = peripheral.RSSI.intValue;
-        [[self delegate] bleDidUpdateRSSI:activePeripheral.RSSI];
+        [[self delegate] BLEDidUpdateRSSI:_activePeripheral.RSSI];
     }
-    [activePeripheral readRSSI];
+    [_activePeripheral readRSSI];
 }
 
 @end

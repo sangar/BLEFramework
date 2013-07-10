@@ -18,55 +18,60 @@
     #import <IOBluetooth/IOBluetooth.h>
 #endif
 
+
 @protocol BLEDelegate
+
 @optional
--(void) bleDidConnect;
--(void) bleDidDisconnect;
--(void) bleDidUpdateRSSI:(NSNumber *) rssi;
--(void) bleDidReceiveData:(unsigned char *) data length:(int) length;
-@required
+- (void)BLEDidConnect;
+- (void)BLEDidDisconnect;
+- (void)BLEDidUpdateRSSI:(NSNumber *)rssi;
+- (void)BLEDidReceiveData:(unsigned char *)data length:(int)length;
+
 @end
 
-@interface BLE : NSObject <CBCentralManagerDelegate, CBPeripheralDelegate> {
-    
-}
 
-@property (nonatomic,assign) id <BLEDelegate> delegate;
-@property (strong, nonatomic) NSMutableArray *peripherals;
-@property (strong, nonatomic) CBCentralManager *CM;
-@property (strong, nonatomic) CBPeripheral *activePeripheral;
+@interface BLE : NSObject
 
--(void) enableWrite;
--(void) enableReadNotification:(CBPeripheral *)p;
--(void) read;
--(void) writeValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID p:(CBPeripheral *)p data:(NSData *)data;
 
--(UInt16) readLibVer;
--(UInt16) readFrameworkVersion;
--(NSString *) readVendorName;
--(BOOL) isConnected;
--(int) readRSSI;
--(void) write:(NSData *)d;
+@property(nonatomic,assign) id<BLEDelegate> delegate;
+@property(strong, nonatomic) CBCentralManager *centralManager; // this phone
+@property(strong, nonatomic) NSMutableArray *peripherals; // BLE devices
+@property(strong, nonatomic) CBPeripheral *activePeripheral; // BLE device
 
--(int) controlSetup:(int) s;
--(int) findBLEPeripherals:(int) timeout;
--(void) connectPeripheral:(CBPeripheral *)peripheral;
 
--(UInt16) swap:(UInt16) s;
--(const char *) centralManagerStateToString:(int)state;
--(void) scanTimer:(NSTimer *)timer;
--(void) printKnownPeripherals;
--(void) printPeripheralInfo:(CBPeripheral*)peripheral;
+- (id)initWithDelegate:(id)delegate;
 
--(void) getAllServicesFromPeripheral:(CBPeripheral *)p;
--(void) getAllCharacteristicsFromPeripheral:(CBPeripheral *)p;
--(CBService *) findServiceFromUUID:(CBUUID *)UUID p:(CBPeripheral *)p;
--(CBCharacteristic *) findCharacteristicFromUUID:(CBUUID *)UUID service:(CBService*)service;
--(const char *) UUIDToString:(CFUUIDRef) UUID;
--(const char *) CBUUIDToString:(CBUUID *) UUID;
--(int) compareCBUUID:(CBUUID *) UUID1 UUID2:(CBUUID *)UUID2;
--(int) compareCBUUIDToInt:(CBUUID *) UUID1 UUID2:(UInt16)UUID2;
--(UInt16) CBUUIDToInt:(CBUUID *) UUID;
--(int) UUIDSAreEqual:(CFUUIDRef)u1 u2:(CFUUIDRef)u2;
+- (void)enableWrite;
+- (void)enableReadNotification:(CBPeripheral *)p;
+- (void)read;
+- (void)writeValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral data:(NSData *)data;
+
+- (UInt16)readLibVer;
+- (UInt16)readFrameworkVersion;
+- (NSString *)readVendorName;
+- (BOOL)isConnected;
+- (int)readRSSI;
+- (void)write:(NSData *)data;
+
+- (int)controlSetup:(int)s;
+- (int)findBLEPeripherals:(int)timeout;
+- (void)connectPeripheral:(CBPeripheral *)peripheral;
+
+- (UInt16)swap:(UInt16)s;
+- (const char *)centralManagerStateToString:(int)state;
+- (void)scanTimer:(NSTimer *)timer;
+- (void)printKnownPeripherals;
+- (void)printPeripheralInfo:(CBPeripheral*)peripheral;
+
+- (void)getAllServicesFromPeripheral:(CBPeripheral *)peripheral;
+- (void)getAllCharacteristicsFromPeripheral:(CBPeripheral *)peripheral;
+- (CBService *)findServiceFromUUID:(CBUUID *)UUID peripheral:(CBPeripheral *)peripheral;
+- (CBCharacteristic *)findCharacteristicFromUUID:(CBUUID *)UUID service:(CBService*)service;
+- (const char *)UUIDToString:(CFUUIDRef)UUID;
+- (const char *)CBUUIDToString:(CBUUID *)UUID;
+- (int)compareCBUUID:(CBUUID *)UUID1 UUID2:(CBUUID *)UUID2;
+- (int)compareCBUUIDToInt:(CBUUID *)UUID1 UUID2:(UInt16)UUID2;
+- (UInt16)CBUUIDToInt:(CBUUID *)UUID;
+- (int)UUIDSAreEqual:(CFUUIDRef)UUID1 UUID2:(CFUUIDRef)UUDID2;
 
 @end
