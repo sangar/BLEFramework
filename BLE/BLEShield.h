@@ -19,7 +19,7 @@
 #endif
 
 
-@protocol BLEDelegate
+@protocol BLEShieldDelegate
 
 @optional
 - (void)BLEDidConnect;
@@ -30,48 +30,21 @@
 @end
 
 
-@interface BLE : NSObject
+@interface BLEShield : NSObject
 
-
-@property(nonatomic,assign) id<BLEDelegate> delegate;
+@property(nonatomic,assign) id<BLEShieldDelegate> delegate;
 @property(strong, nonatomic) CBCentralManager *centralManager; // this phone
 @property(strong, nonatomic) NSMutableArray *peripherals; // BLE devices
 @property(strong, nonatomic) CBPeripheral *activePeripheral; // BLE device
 
-
 - (id)initWithDelegate:(id)delegate;
-
-- (void)enableWrite;
-- (void)enableReadNotification:(CBPeripheral *)p;
-- (void)read;
-- (void)writeValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral data:(NSData *)data;
-
-- (UInt16)readLibVer;
-- (UInt16)readFrameworkVersion;
-- (NSString *)readVendorName;
-- (BOOL)isConnected;
-- (int)readRSSI;
-- (void)write:(NSData *)data;
 
 - (int)controlSetup:(int)s;
 - (int)findBLEPeripherals:(int)timeout;
 - (void)connectPeripheral:(CBPeripheral *)peripheral;
 
-- (UInt16)swap:(UInt16)s;
-- (const char *)centralManagerStateToString:(int)state;
-- (void)scanTimer:(NSTimer *)timer;
-- (void)printKnownPeripherals;
-- (void)printPeripheralInfo:(CBPeripheral*)peripheral;
-
-- (void)getAllServicesFromPeripheral:(CBPeripheral *)peripheral;
-- (void)getAllCharacteristicsFromPeripheral:(CBPeripheral *)peripheral;
-- (CBService *)findServiceFromUUID:(CBUUID *)UUID peripheral:(CBPeripheral *)peripheral;
-- (CBCharacteristic *)findCharacteristicFromUUID:(CBUUID *)UUID service:(CBService*)service;
-- (const char *)UUIDToString:(CFUUIDRef)UUID;
-- (const char *)CBUUIDToString:(CBUUID *)UUID;
-- (int)compareCBUUID:(CBUUID *)UUID1 UUID2:(CBUUID *)UUID2;
-- (int)compareCBUUIDToInt:(CBUUID *)UUID1 UUID2:(UInt16)UUID2;
-- (UInt16)CBUUIDToInt:(CBUUID *)UUID;
-- (int)UUIDSAreEqual:(CFUUIDRef)UUID1 UUID2:(CFUUIDRef)UUDID2;
+- (BOOL)isConnected;
+- (int)readRSSI;
+- (void)write:(NSData *)data;
 
 @end

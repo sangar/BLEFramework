@@ -11,11 +11,11 @@
  
 */
 
-#import "BLE.h"
+#import "BLEShield.h"
 #import "BLEDefines.h"
 
 
-@interface BLE () <CBCentralManagerDelegate, CBPeripheralDelegate>
+@interface BLEShield () <CBCentralManagerDelegate, CBPeripheralDelegate>
 
 - (void)readValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral;
 - (void)notification:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral on:(BOOL)on;
@@ -27,10 +27,37 @@
 - (BOOL)isLECapableHardware;
 #endif
 
+- (void)enableWrite;
+- (void)enableReadNotification:(CBPeripheral *)p;
+- (void)read;
+- (void)writeValue:(CBUUID *)serviceUUID characteristicUUID:(CBUUID *)characteristicUUID peripheral:(CBPeripheral *)peripheral data:(NSData *)data;
+
+- (UInt16)readLibVer;
+- (UInt16)readFrameworkVersion;
+- (NSString *)readVendorName;
+
+- (UInt16)swap:(UInt16)s;
+- (const char *)centralManagerStateToString:(int)state;
+- (void)scanTimer:(NSTimer *)timer;
+
+- (void)printKnownPeripherals;
+- (void)printPeripheralInfo:(CBPeripheral*)peripheral;
+
+- (void)getAllServicesFromPeripheral:(CBPeripheral *)peripheral;
+- (void)getAllCharacteristicsFromPeripheral:(CBPeripheral *)peripheral;
+- (CBService *)findServiceFromUUID:(CBUUID *)UUID peripheral:(CBPeripheral *)peripheral;
+- (CBCharacteristic *)findCharacteristicFromUUID:(CBUUID *)UUID service:(CBService*)service;
+- (const char *)UUIDToString:(CFUUIDRef)UUID;
+- (const char *)CBUUIDToString:(CBUUID *)UUID;
+- (int)compareCBUUID:(CBUUID *)UUID1 UUID2:(CBUUID *)UUID2;
+- (int)compareCBUUIDToInt:(CBUUID *)UUID1 UUID2:(UInt16)UUID2;
+- (UInt16)CBUUIDToInt:(CBUUID *)UUID;
+- (int)UUIDSAreEqual:(CFUUIDRef)UUID1 UUID2:(CFUUIDRef)UUDID2;
+
 @end
 
 
-@implementation BLE
+@implementation BLEShield
 
 
 @synthesize delegate = _delegate;
@@ -54,8 +81,7 @@ static int rssi = 0;
 - (id)init {
     self = [super init];
     if (self) {
-        [self controlSetup:0];
-        [self findBLEPeripherals:10]; // 10 seconds timeout
+        
     }
     return self;
 }
@@ -216,7 +242,8 @@ static int rssi = 0;
 
 // Step 4
 - (void)connectPeripheral:(CBPeripheral *)peripheral {
-    printf("Connecting to peripheral with UUID : %s\r\n",[self UUIDToString:peripheral.UUID]);
+    NSLog(@"Connecting to peripheral with UUID : %s", [self UUIDToString:peripheral.UUID]);
+    
     self.activePeripheral = peripheral;
     self.activePeripheral.delegate = self;
     [self.centralManager connectPeripheral:self.activePeripheral options:[NSDictionary dictionaryWithObject:[NSNumber numberWithBool:YES] forKey:CBConnectPeripheralOptionNotifyOnDisconnectionKey]];
@@ -417,10 +444,13 @@ static int rssi = 0;
 
 // Step 3
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary *)advertisementData RSSI:(NSNumber *)RSSI {
-    if (!self.peripherals)
+    
+    NSLog(@"didDiscoverPeripheral");
+    [self connectPeripheral:peripheral];
+    
+    if (!self.peripherals) {
         self.peripherals = [[NSMutableArray alloc] initWithObjects:peripheral,nil];
-    else
-    {
+    } else {
         for(int i = 0; i < self.peripherals.count; i++)
         {
             CBPeripheral *p = [self.peripherals objectAtIndex:i];
@@ -439,8 +469,6 @@ static int rssi = 0;
         
         printf("New UUID, adding\r\n");
     }
-    
-    printf("didDiscoverPeripheral\r\n");
 }
 
 - (void)centralManagerDidUpdateState:(CBCentralManager *)central {
